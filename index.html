@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>星海音乐源 · 一键同步</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; padding: 24px 18px 40px;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1b2333 0%, #0d1117 60%);
+    color: #e6edf3; display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 20px; margin: 8px 0 4px; font-weight: 600; letter-spacing: .5px; }
+  .sub { color: #8b949e; font-size: 13px; margin-bottom: 22px; text-align: center; }
+  .card {
+    width: 100%; max-width: 460px; background: #161b22;
+    border: 1px solid #30363d; border-radius: 14px; padding: 18px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }
+  input[type=password], input[type=text] {
+    width: 100%; padding: 12px 14px; font-size: 15px; border-radius: 10px;
+    border: 1px solid #30363d; background: #0d1117; color: #e6edf3; margin-bottom: 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  input:focus { outline: none; border-color: #388bfd; box-shadow: 0 0 0 3px rgba(56,139,253,.25); }
+  button {
+    width: 100%; padding: 16px; font-size: 17px; font-weight: 600; border-radius: 12px;
+    border: 0; color: #fff; background: linear-gradient(180deg,#238636,#1f7a31);
+    cursor: pointer; transition: transform .06s ease, filter .15s ease;
+  }
+  button:active { transform: scale(.985); filter: brightness(.95); }
+  button:disabled { opacity: .6; }
+  .status {
+    margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: 14px;
+    background: #0d1117; border: 1px solid #30363d; color: #8b949e;
+    word-break: break-all; display: none;
+  }
+  .status.show { display: block; }
+  .ok { border-color: #238636; color: #3fb950; }
+  .err { border-color: #da3633; color: #f85149; }
+  .info { border-color: #1f6feb; color: #58a6ff; }
+  .links { margin-top: 20px; font-size: 14px; line-height: 2; }
+  .links a { color: #58a6ff; text-decoration: none; word-break: break-all; }
+  .links a:active { opacity: .7; }
+  .hint { margin-top: 14px; font-size: 12px; color: #6e7681; line-height: 1.7; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row input { margin-bottom: 0; }
+  .mini {
+    flex: 0 0 auto; width: auto; padding: 12px 14px; font-size: 14px; font-weight: 500;
+    background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  }
+  .mini:active { background: #30363d; }
+</style>
+</head>
+<body>
+  <h1>🎵 星海音乐源 · 一键同步</h1>
+  <div class="sub">点一下，从源站拉取最新版本并提交到 GitHub</div>
+
+  <div class="card">
+    <label for="tok">GitHub Token（只存本机 localStorage）</label>
+    <div class="row">
+      <input id="tok" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+      <button class="mini" id="save">保存</button>
+    </div>
+
+    <button id="go" style="margin-top:16px">🚀 立即同步</button>
+
+    <div class="status" id="st"></div>
+
+    <div class="links">
+      <div>📄 源码（国内可直连）：<br>
+        <a id="raw" target="_blank" rel="noopener">加载中…</a>
+      </div>
+      <div>📋 同步记录（需能开 github.com）：<br>
+        <a id="runs" target="_blank" rel="noopener">Actions 运行记录</a>
+      </div>
+    </div>
+
+    <div class="hint">
+      · 返回 <b>204</b> 表示已触发，约 20 秒后 GitHub 上会多一条运行记录<br>
+      · Token 权限需要：Actions: Read and write（提交文件另需 Contents: Read and write）<br>
+      · 页面不会把你输入的 token 发往除 api.github.com 之外的任何地址
+    </div>
+  </div>
+
+<script>
+(function () {
+  const OWNER = 'zhangzong1314';
+  const REPO  = 'lx-music-source-latest';
+  const FILE  = 'xinghai-music-source.js';
+  const API   = `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/sync.yml/dispatches`;
+  const KEY   = 'gh_pat_lx_sync';
+
+  const $tok  = document.getElementById('tok');
+  const $go   = document.getElementById('go');
+  const $save = document.getElementById('save');
+  const $st   = document.getElementById('st');
+  const $raw  = document.getElementById('raw');
+  const $runs = document.getElementById('runs');
+
+  $raw.textContent  = `gh-proxy.com/…/${FILE}`;
+  $raw.href         = `https://gh-proxy.com/https://raw.githubusercontent.com/${OWNER}/${REPO}/main/${FILE}`;
+  $runs.href        = `https://github.com/${OWNER}/${REPO}/actions`;
+
+  // 支持 ?t=xxx 或 #t=xxx 自动填充后从地址栏抹掉
+  try {
+    const qs = new URLSearchParams(location.search);
+    const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    const t = qs.get('t') || hash.get('t');
+    if (t) {
+      localStorage.setItem(KEY, t.trim());
+      history.replaceState(null, '', location.pathname);
+    }
+  } catch (e) {}
+
+  const saved = localStorage.getItem(KEY);
+  if (saved) $tok.value = saved;
+
+  function setStatus(msg, cls) {
+    $st.textContent = msg;
+    $st.className = 'status show ' + (cls || 'info');
+  }
+
+  $save.addEventListener('click', () => {
+    const t = $tok.value.trim();
+    if (!t) return setStatus('请先粘贴 Token', 'err');
+    localStorage.setItem(KEY, t);
+    setStatus('✅ Token 已保存到本机', 'ok');
+  });
+
+  $go.addEventListener('click', async () => {
+    const token = ($tok.value || localStorage.getItem(KEY) || '').trim();
+    if (!token) return setStatus('请先在输入框粘贴 GitHub Token', 'err');
+
+    $go.disabled = true;
+    setStatus('⏳ 正在触发同步…', 'info');
+
+    const t0 = Date.now();
+    try {
+      const resp = await fetch(API, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ref: 'main' })
+      });
+      const ms = Date.now() - t0;
+
+      if (resp.status === 204) {
+        setStatus(`✅ 同步已触发（HTTP 204，${ms}ms）\n约 20 秒后可在 Actions 看到运行记录`, 'ok');
+      } else if (resp.status === 401) {
+        localStorage.removeItem(KEY);
+        setStatus('❌ Token 无效或已过期（401），请重新粘贴', 'err');
+      } else if (resp.status === 403) {
+        setStatus('❌ 权限不足（403）：Token 需要 Actions: Read and write', 'err');
+      } else if (resp.status === 404) {
+        setStatus('❌ 仓库或 workflow 不存在（404）', 'err');
+      } else {
+        let body = '';
+        try { body = (await resp.text()).slice(0, 200); } catch (e) {}
+        setStatus(`❌ 失败 HTTP ${resp.status}\n${body}`, 'err');
+      }
+    } catch (e) {
+      setStatus(`❌ 网络错误：${e.message}\n（检查网络，或 api.github.com 是否可达）`, 'err');
+    } finally {
+      $go.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
