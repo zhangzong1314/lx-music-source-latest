@@ -1,12 +1,12 @@
 /*!
  * @name         星海音乐源
- * @description  GDAPI | 聚合 | ChKSz API | 全平台支持 24bit FLAC；QQ 音源大部分时间暂不可用（会尽量维持）｜建议与反馈：https://yy1.zddyr.top/survey.php?k=192ee708d4721bc9077f8f1738296c1b
- * @version      v3.2.21
+ * @description  GDAPI | 聚合 | ChKSz API | 全平台支持 24bit FLAC；QQ 音源部分时段不可用（会尽量维持）｜建议与反馈：https://yy1.zddyr.top/survey.php?k=192ee708d4721bc9077f8f1738296c1b
+ * @version      v3.2.22
  * @author       万去了了 / 科学大魔王
  * @homepage     https://zddyr.top/
  * @see          http://gc.kxwa.top/
- * @lastUpdate   2026-11-26
- * @update       优化稳定性与错误提示（不强制更新）
+ * @lastUpdate   2026-11-27
+ * @update       提高使用稳定性；若还有问题可加 QQ 群 1137764231
  * @qqgroup      1137764231（星海音乐 & 科网技术交流群）
  * @license      仅供学习交流，请支持正版
  */
@@ -35,8 +35,9 @@ const LICENSE_CONFIG = {
 
 const URL_CONFIG = {
     domains: {
-        primary: 'yy1.zddyr.top',   // 主 API（新域名，避开部分地区 DNS 拦截）
-        backup:  'yy.zddyr.top',    // 备用 API（原域名，主域名不可用时自动回退）
+        primary: 'yy1.zddyr.top',      // 一级：主 API
+        middle:  'zrcdy.dpdns.org',    // 二级：中间层（内部转发到主站 API）
+        backup:  'yy.zddyr.top',       // 三级：老域名兜底
         gdStudio: 'music-api.gdstudio.xyz',
         chkszNew: 'api.chksz.com'
     },
@@ -69,20 +70,37 @@ const buildUrl = (domainKey, pathKey, extraQuery = '') => {
 
 // 主域名在部分地区会被 DNS 污染/拦截：网络失败或 5xx 时自动切到备用域名重试一次。
 // 只作用于主 API 域名的请求，第三方接口（GD / ChkSz）不受影响。
-const PRIMARY_HOST = URL_CONFIG.domains.primary;
-const BACKUP_HOST = URL_CONFIG.domains.backup;
-const requestWithFallback = (url, options, callback) => {
-    const backupUrl = url.includes(PRIMARY_HOST) ? url.replace(PRIMARY_HOST, BACKUP_HOST) : null;
-    if (!backupUrl || backupUrl === url) return request(url, options, callback);
-    request(url, options, (err, resp) => {
-        const failed = !!err || !resp ||
-            (typeof resp.statusCode === 'number' && resp.statusCode >= 500);
-        if (!failed) return callback(err, resp);
-        request(backupUrl, options, callback);
-    });
+// 自有 API 域名三级回退：yy1 → zrcdy（中间层）→ yy
+// 触发条件：网络错误 / 无响应 / 5xx；第三方接口（GD / ChkSz）不参与。
+const API_HOSTS = [
+    URL_CONFIG.domains.primary,
+    URL_CONFIG.domains.middle,
+    URL_CONFIG.domains.backup,
+];
+
+/** 按 URL 当前所在级别，生成「本级 + 后面所有兜底级别」的尝试序列 */
+const fallbackChain = (url) => {
+    const idx = API_HOSTS.findIndex((h) => h && url.includes(h));
+    if (idx < 0) return [url];
+    const host = API_HOSTS[idx];
+    return API_HOSTS.slice(idx).map((h) => url.replace(host, h));
 };
 
-const SCRIPT_VERSION = 'v3.2.20';
+const requestWithFallback = (url, options, callback) => {
+    const chain = [...new Set(fallbackChain(url))].filter(Boolean);
+    if (chain.length <= 1) return request(url, options, callback);
+    const tryAt = (i) => {
+        request(chain[i], options, (err, resp) => {
+            const failed = !!err || !resp ||
+                (typeof resp.statusCode === 'number' && resp.statusCode >= 500);
+            if (!failed || i + 1 >= chain.length) return callback(err, resp);
+            tryAt(i + 1);
+        });
+    };
+    tryAt(0);
+};
+
+const SCRIPT_VERSION = 'v3.2.22';
 const SCRIPT_NAME = 'XingHaiMusicSource';
 const SOURCE_MAP = { tx: 'qq', mg: 'migu', kw: 'kw', kg: 'kg', qs: 'qs' };
 const PLATFORM_NAMES = { wy: '网易云音乐', tx: 'QQ音乐', kw: '酷我音乐', kg: '酷狗音乐', mg: '咪咕音乐', qs: '汽水音乐' };
@@ -463,7 +481,7 @@ async function fetchMusicUrl(source, musicInfo, quality) {
             }
         }
     }
-    // --- QQ 音乐（大部分时间暂不可用：先用 chksz，再退后端，都失败就给明确提示） ---
+    // --- QQ 音乐 ---
     else if (source === 'tx') {
         if (chkszEnabled && CHKSZ_CONFIG.enableQQ) {
             try {
@@ -478,7 +496,7 @@ async function fetchMusicUrl(source, musicInfo, quality) {
         }
 
         if (!result.url) {
-            lastError = 'QQ 音乐音源目前大部分时间不可用（上游接口收紧），我们会尽量维持；'
+            lastError = 'QQ 音乐音源部分时段不可用（上游接口收紧），会尽量维持；'
                 + '建议优先使用网易云 / 酷狗 / 酷我 / 咪咕'
                 + (lastError ? `｜${lastError}` : '');
         }
