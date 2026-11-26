@@ -1,12 +1,13 @@
 /*!
  * @name         星海音乐源
- * @description  GDAPI | 聚合 | ChKSz API | 全平台支持 24bit FLAC，网易、酷狗、QQ 最高支持母带｜建议与反馈：https://yy1.zddyr.top/survey.php?k=192ee708d4721bc9077f8f1738296c1b
- * @version      v3.2.20
+ * @description  GDAPI | 聚合 | ChKSz API | 全平台支持 24bit FLAC；QQ 音源大部分时间暂不可用（会尽量维持）｜建议与反馈：https://yy1.zddyr.top/survey.php?k=192ee708d4721bc9077f8f1738296c1b
+ * @version      v3.2.21
  * @author       万去了了 / 科学大魔王
  * @homepage     https://zddyr.top/
  * @see          http://gc.kxwa.top/
- * @lastUpdate   2026-11-17
- * @update       新增启动域名连通性日志与更新服务失败提示
+ * @lastUpdate   2026-11-26
+ * @update       优化稳定性与错误提示（不强制更新）
+ * @qqgroup      1137764231（星海音乐 & 科网技术交流群）
  * @license      仅供学习交流，请支持正版
  */
 
@@ -26,7 +27,7 @@ const CHKSZ_CONFIG = {
     enableQQ: true,
 };
 
-// 卡密（可选）：填了就能用 QQ 等「仅认证用户」音源，不填只能走基础音源
+// 卡密：预留（暂不启用）
 const LICENSE_CONFIG = {
     code: '',
 };
@@ -118,7 +119,6 @@ let tokenTimestamp = 0;
 let clientHeader = '';
 let deviceId = '';
 let availablePlatforms = [];
-let backendAggBlocked = false;
 const extraCache = new Map();
 
 // -------------------- 工具函数 --------------------
@@ -384,11 +384,6 @@ async function getUrlFromBackend(source, musicInfo, quality) {
     const url = `${baseUrl}?${query}`;
     const resp = await httpFetch(url, { method: 'GET', timeout: 8000 });
 
-    if (resp.statusCode === 403) {
-        backendAggBlocked = true;
-        throw new Error('后端聚合接口返回403，已屏蔽');
-    }
-
     if (resp.statusCode !== 200) throw new Error(`后端接口状态${resp.statusCode}`);
 
     const data = resp.body;
@@ -452,7 +447,7 @@ async function fetchMusicUrl(source, musicInfo, quality) {
             }
         }
 
-        if (!result.url && !backendAggBlocked) {
+        if (!result.url) {
             try {
                 result = await getUrlFromBackend('wy', musicInfo, actualQuality);
             } catch (e) {
@@ -468,7 +463,7 @@ async function fetchMusicUrl(source, musicInfo, quality) {
             }
         }
     }
-    // --- QQ 音乐 ---
+    // --- QQ 音乐（大部分时间暂不可用：先用 chksz，再退后端，都失败就给明确提示） ---
     else if (source === 'tx') {
         if (chkszEnabled && CHKSZ_CONFIG.enableQQ) {
             try {
@@ -480,6 +475,12 @@ async function fetchMusicUrl(source, musicInfo, quality) {
             try {
                 result = await getUrlFromBackend(source, musicInfo, actualQuality);
             } catch (e) { lastError = `后端失败: ${e.message}`; }
+        }
+
+        if (!result.url) {
+            lastError = 'QQ 音乐音源目前大部分时间不可用（上游接口收紧），我们会尽量维持；'
+                + '建议优先使用网易云 / 酷狗 / 酷我 / 咪咕'
+                + (lastError ? `｜${lastError}` : '');
         }
     }
     // --- 汽水音乐 ---
